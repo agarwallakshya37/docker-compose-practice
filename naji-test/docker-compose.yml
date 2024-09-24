@@ -1,0 +1,89 @@
+version: '3.3'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:6.2.1
+    hostname: zookeeper
+    container_name: zookeeper
+    restart: always
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-server:6.2.1
+    hostname: kafka
+    container_name: kafka
+    restart: always
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: kafka:29092
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 1
+      CONFLUENT_METRICS_ENABLE: 'true'
+      CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
+
+  connect-distributed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # args:
+      #   ARTIFACTORY_USER: ${ARTIFACTORY_USER}
+      #   ARTIFACTORY_PASSWORD: ${ARTIFACTORY_PASSWORD}
+      #   CONNECTOR_VERSION_STRATEGY: ${CONNECTOR_VERSION_STRATEGY}
+      #   FTP_CONNECTOR_VERSION: ${FTP_CONNECTOR_VERSION}
+      #   HTTP_CONNECTOR_VERSION: ${HTTP_CONNECTOR_VERSION}
+      #   RSS_CONNECTOR_VERSION: ${RSS_CONNECTOR_VERSION}
+      #   SMT_VERSION: ${SMT_VERSION}
+      #   HTTP_STREAMING_CONNECTOR_VERSION: ${HTTP_STREAMING_CONNECTOR_VERSION}
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:29092
+      CONNECT_REST_ADVERTISED_HOST_NAME: localhost
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: kafka-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: "kafka-connect-config" # need to create this topic most likely
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_OFFSET_STORAGE_TOPIC: "kafka-connect-offsets"
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_STATUS_STORAGE_TOPIC: "kafka-connect-status"
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/etc/kafka-connect-plugins"
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_PRODUCER_INTERCEPTOR_CLASSES: brave.kafka.interceptor.TracingProducerInterceptor
+      CONNECT_CONSUMER_INTERCEPTOR_CLASSES: brave.kafka.interceptor.TracingConsumerInterceptor
+      CONNECT_CONNECTOR_CLIENT_CONFIG_OVERRIDE_POLICY: All
+      # HTTP_CONNECTOR_PROMETHEUS_PORT: 4445
+      # JAVA_OPTS: -Dcom.sun.security.enableCRLDP=true -Dcom.sun.net.ssl.checkRevocation=false
+      # KAFKA_OPTS: -javaagent:/jmx_agent/jmx_prometheus_javaagent.jar=4444:/jmx_agent/config.yml
+      # JMX_PORT: 1976
+      # BUGSNAG_ENABLED: "false"
+      # CLASSPATH: "/priority-lib/*"
+    ports:
+      - 8083:8083
+    depends_on:
+      - kafka
+    deploy:
+      replicas: 1
+
